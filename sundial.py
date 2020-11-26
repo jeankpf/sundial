@@ -1,8 +1,5 @@
-# matplotlib inline
-# pylab inline
-
+from math import radians, degrees, tan, pi, acos
 import orekit
-import numpy
 
 vm = orekit.initVM()
 
@@ -12,26 +9,38 @@ setup_orekit_curdir()
 
 from org.orekit.frames import FramesFactory, TopocentricFrame
 from org.orekit.bodies import OneAxisEllipsoid, GeodeticPoint, CelestialBodyFactory
-from org.orekit.propagation.analytical.tle import TLE, TLEPropagator
 from org.orekit.utils import IERSConventions, Constants, PVCoordinatesProvider
 from org.hipparchus.geometry.euclidean.threed import Vector3D
 from org.orekit.time import AbsoluteDate, TimeScalesFactory
 
-from math import radians, degrees, tan, cos, sin, pi
+def utc2local_time(utc_date, time_zone, summer_time):
+    if summer_time:
+        time_zone += 1
+    return utc_date.shiftedBy(3600.0*time_zone)
 
-def UTC2LocalTime(UTCdate, timeZone, summerTime):
-    if summerTime:
-        timeZone += 1
-    return UTCdate.shiftedBy(3600.0*timeZone)
+def local_time2utc(local_time, time_zone, summer_time):
+    if summer_time:
+        time_zone += 1
+    return local_time.shiftedBy(-3600.0*time_zone)
 
-def localTime2UTC(localTime, timeZone, summerTime):
-    if summerTime:
-        timeZone += 1
-    return localTime.shiftedBy(-3600.0*timeZone)
+def get_elevation(sun_pos_sundial_frame):
+    proj_sun_pos_sundial_frame = Vector3D(sun_pos_sundial_frame.getX(),
+                                          sun_pos_sundial_frame.getY(), 0.0)
+    cos_elevation = Vector3D.dotProduct(sun_pos_sundial_frame, proj_sun_pos_sundial_frame)/ \
+    (sun_pos_sundial_frame.getNorm()*proj_sun_pos_sundial_frame.getNorm())
+    return acos(cos_elevation)
+
+def get_azimuth(sun_pos_sundial_frame):
+    proj_sun_pos_sundial_frame = Vector3D(sun_pos_sundial_frame.getX(),
+                                          sun_pos_sundial_frame.getY(), 0.0)
+    cos_azimuth = proj_sun_pos_sundial_frame.getY()/proj_sun_pos_sundial_frame.getNorm()
+    return acos(cos_azimuth)
+
 
 class Sundial:
 
-    def __init__(self, lat=48.58, longi=7.75, alt=142.0, loc="Strasbourg", timeZone=1, gnomonLength=1):
+    def __init__(self, lat=48.58, longi=7.75, alt=142.0, loc="Strasbourg Frame",
+                 time_zone=1.0, gnomon_length=1.0):
         self.latitude = radians(lat)
         self.longitude = radians(longi)
         self.altitude = alt
@@ -39,103 +48,111 @@ class Sundial:
         # date = AbsoluteDate(year, month, 1, 0, 0, 0.0, utc)
         # self.date = date
         self.location= loc
-        self.timeZone = timeZone
-        # self.summerTime = summerTime
-        self.gnomonLength = gnomonLength
-        self.stationGeoPoint = GeodeticPoint(self.latitude, self.longitude, self.altitude)
-        ITRF = FramesFactory.getITRF(IERSConventions.IERS_2010, True)
-        earth = OneAxisEllipsoid(Constants.WGS84_EARTH_EQUATORIAL_RADIUS, Constants.WGS84_EARTH_FLATTENING, ITRF)
-        self.stationFrame = TopocentricFrame(earth, self.stationGeoPoint, self.location)
-        self.pvSun = CelestialBodyFactory.getSun()
-        self.pvSun = PVCoordinatesProvider.cast_(self.pvSun)
+        self.time_zone = time_zone
+        # self.summer_time = summer_time
+        self.gnomon_length = gnomon_length
+        self.station_geo_point = GeodeticPoint(self.latitude, self.longitude, self.altitude)
+        itrf = FramesFactory.getITRF(IERSConventions.IERS_2010, True)
+        earth = OneAxisEllipsoid(Constants.WGS84_EARTH_EQUATORIAL_RADIUS,
+                                 Constants.WGS84_EARTH_FLATTENING, itrf)
+        self.station_frame = TopocentricFrame(earth, self.station_geo_point, self.location)
+        self.pv_sun = CelestialBodyFactory.getSun()
+        self.pv_sun = PVCoordinatesProvider.cast_(self.pv_sun)
 
-    def getLat(self):
+    def get_lat(self):
         return self.latitude
 
-    def getLong(self):
+    def get_long(self):
         return self.longitude
 
-    def getAlt(self):
+    def get_alt(self):
         return self.altitude
 
-    def getStationGeoPoint(self):
-        return self.stationGeoPoint
+    def get_station_geo_point(self):
+        return self.station_geo_point
 
-    def getStationFrame(self):
-        return self.stationFrame
+    def get_station_frame(self):
+        return self.station_frame
 
-    def getSunPosInStationFrame(self, UTCdate):
+    def get_sun_pos_station_frame(self, utc_date):
         j2000 = FramesFactory.getEME2000()
-        sunPosInJ2000 = self.pvSun.getPVCoordinates(UTCdate, j2000).getPosition()
-        j2000ToTopocentric = j2000.getTransformTo(self.stationFrame, UTCdate)
-        sunPosInTopo = j2000ToTopocentric.transformPosition(sunPosInJ2000)
-        return sunPosInTopo
+        sun_pos_j2000 = self.pv_sun.getPVCoordinates(utc_date, j2000).getPosition()
+        j2000_to_topocentric = j2000.getTransformTo(self.station_frame, utc_date)
+        sun_pos_topo = j2000_to_topocentric.transformPosition(sun_pos_j2000)
+        return sun_pos_topo
 
-    def getSunElevation(self, UTCdate):
+    def get_sun_elevation(self, utc_date):
         #Radians
-        return self.stationFrame.getElevation(self.getSunPosInStationFrame(UTCdate), self.stationFrame, UTCdate)
+        return self.station_frame.getElevation(self.get_sun_pos_station_frame(utc_date),
+                                               self.station_frame, utc_date)
 
-    def getSunElevationDegrees(self, UTCdate):
+    def get_sun_elevation_degrees(self, utc_date):
         #Degrees
-        return degrees(self.stationFrame.getElevation(self.getSunPosInStationFrame(UTCdate), self.stationFrame, UTCdate))
+        return degrees(self.station_frame.getElevation(self.get_sun_pos_station_frame(utc_date),
+                                                       self.station_frame, utc_date))
 
-    def getGnomonShadowLength(self, UTCdate):
-        return self.gnomonLength/tan(self.getSunElevation(UTCdate))
+    def get_gnomon_shadow_length(self, utc_date):
+        return self.gnomon_length/tan(self.get_sun_elevation(utc_date))
 
-    def getGnomonShadowAzimtuh(self, UTCdate):
-        return self.stationFrame.getAzimuth(self.getSunPosInStationFrame(UTCdate), self.stationFrame, UTCdate)
+    def get_gnomon_shadow_azimtuh(self, utc_date):
+        return self.station_frame.getAzimuth(self.get_sun_pos_station_frame(utc_date),
+                                             self.station_frame, utc_date)
 
-    def getGnomonShadowAzimtuhDegrees(self, UTCdate):
-        return degrees(self.stationFrame.getAzimuth(self.getSunPosInStationFrame(UTCdate), self.stationFrame, UTCdate))
+    def get_gnomon_shadow_azimtuh_degrees(self, utc_date):
+        return degrees(self.station_frame.getAzimuth(self.get_sun_pos_station_frame(utc_date),
+                                                     self.station_frame, utc_date))
 
-    def getGnomonShadowAngleWRTX(self, UTCdate):
-        return 3*pi/2 - self.getGnomonShadowAzimtuh(UTCdate)
+    def get_gnomon_shadow_angle_wrtx(self, utc_date):
+        return 3*pi/2 - self.get_gnomon_shadow_azimtuh(utc_date)
 
-    def getGnomonShadowAngleWRTXDegrees(self, UTCdate):
-        return degrees(3*pi/2 - self.getGnomonShadowAzimtuh(UTCdate))
+    def get_gnomon_shadow_angle_wrtx_degrees(self, utc_date):
+        return degrees(3*pi/2 - self.get_gnomon_shadow_azimtuh(utc_date))
 
-    def getSunMaxElevation(self, year, month, day):
-        currentUTCDate = AbsoluteDate(year, month, day, 0, 0 , 0.0, TimeScalesFactory.getUTC())
-        isMaxElevation = False
-        timeStep = 10.0
-        currentEle0 = self.getSunElevation(currentUTCDate)
-        currentEle1 = self.getSunElevation(currentUTCDate.shiftedBy(timeStep))
-        if currentEle0 > currentEle1:
-            isMaxElevation = True
-        while not isMaxElevation:
-            currentEle0 = currentEle1
-            currentEle1 = self.getSunElevation(currentUTCDate.shiftedBy(timeStep))
-            if currentEle0 > currentEle1:
-                isMaxElevation = True
-                currentUTCDate.shiftedBy(-timeStep)
-            currentUTCDate = currentUTCDate.shiftedBy(timeStep)
-        return currentEle0, currentUTCDate
+    def get_sun_max_elevation(self, year, month, day):
+        currentutc_date = AbsoluteDate(year, month, day, 0, 0 , 0.0, TimeScalesFactory.getUTC())
+        is_max_elevation = False
+        time_step = 10.0
+        current_ele0 = self.get_sun_elevation(currentutc_date)
+        current_ele1 = self.get_sun_elevation(currentutc_date.shiftedBy(time_step))
+        if current_ele0 > current_ele1:
+            is_max_elevation = True
+        while not is_max_elevation:
+            current_ele0 = current_ele1
+            current_ele1 = self.get_sun_elevation(currentutc_date.shiftedBy(time_step))
+            if current_ele0 > current_ele1:
+                is_max_elevation = True
+                currentutc_date.shiftedBy(-time_step)
+            currentutc_date = currentutc_date.shiftedBy(time_step)
+        return current_ele0, currentutc_date
 
 
-    def getZenithLocalTime(self, year, month, day, summertime):
-        _, zenithUTC = self.getSunMaxElevation(year, month, day)
-        return UTC2LocalTime(zenithUTC, self.timeZone, summertime)
+    def get_zenith_local_time(self, year, month, day, summer_time):
+        _, zenith_utc = self.get_sun_max_elevation(year, month, day)
+        return utc2local_time(zenith_utc, self.time_zone, summer_time)
 
-    def getZenithUTC(self, year, month, day):
-        _, zenithUTC = self.getSunMaxElevation(year, month, day)
-        return zenithUTC
+    def get_zenith_utc(self, year, month, day):
+        _, zenith_utc = self.get_sun_max_elevation(year, month, day)
+        return zenith_utc
 
-    def getGnomonShadowAngleZenith(self, year, month, day):
-        UTCdate = self.getZenithUTC(year, month, day)
-        return self.getGnomonShadowAngleWRTX(UTCdate)
+    def get_gnomon_shadow_angle_zenith(self, year, month, day):
+        utc_date = self.get_zenith_utc(year, month, day)
+        return self.get_gnomon_shadow_angle_wrtx(utc_date)
 
-    def getAllGnomonShadowAngleDegrees(self, year, month, day):
-        zenithUTC = self.getZenithUTC(year, month, day)
-        gnomonShadowAngles = [degrees(self.getGnomonShadowAngleZenith(year, month, day))]
-        assert self.getGnomonShadowAngleZenith(year, month, day) == self.getGnomonShadowAngleWRTX(zenithUTC)
+    def get_all_gnomon_shadow_angle_degrees(self, year, month, day):
+        zenith_utc = self.get_zenith_utc(year, month, day)
+        gnomon_shadow_angles = [degrees(self.get_gnomon_shadow_angle_zenith(year, month, day))]
+        assert self.get_gnomon_shadow_angle_zenith(year, month, day) == \
+            self.get_gnomon_shadow_angle_wrtx(zenith_utc)
         for i in range(1, 12):
-            gnomonShadowAngles.append(self.getGnomonShadowAngleWRTXDegrees(zenithUTC.shiftedBy(i*3600.0)))
-        return gnomonShadowAngles
+            gnomon_shadow_angles.append( \
+                                        self.get_gnomon_shadow_angle_wrtx_degrees(zenith_utc.shiftedBy(i*3600.0)))
+        return gnomon_shadow_angles
 
-    def getAllGnomonShadowAngle(self, year, month, day):
-        zenithUTC = self.getZenithUTC(year, month, day)
-        gnomonShadowAngles = [self.getGnomonShadowAngleZenith(year, month, day)]
-        assert self.getGnomonShadowAngleZenith(year, month, day) == self.getGnomonShadowAngleWRTX(zenithUTC)
+    def get_all_gnomon_shadow_angle(self, year, month, day):
+        zenith_utc = self.get_zenith_utc(year, month, day)
+        gnomon_shadow_angles = [self.get_gnomon_shadow_angle_zenith(year, month, day)]
+        assert self.get_gnomon_shadow_angle_zenith(year, month, day) == \
+            self.get_gnomon_shadow_angle_wrtx(zenith_utc)
         for i in range(1, 12):
-            gnomonShadowAngles.append(self.getGnomonShadowAngleWRTX(zenithUTC.shiftedBy(i*3600.0)))
-        return gnomonShadowAngles
+            gnomon_shadow_angles.append(self.get_gnomon_shadow_angle_wrtx(zenith_utc.shiftedBy(i*3600.0)))
+        return gnomon_shadow_angles
