@@ -1,0 +1,2 @@
+What will be improved in next commits?
+- A working murial sundial version will soon be available (it will include a last change of reference frame)
