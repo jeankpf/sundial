@@ -14,11 +14,47 @@ from org.hipparchus.geometry.euclidean.threed import Vector3D
 from org.orekit.time import AbsoluteDate, TimeScalesFactory
 
 def utc2local_time(utc_date, time_zone, summer_time):
+    """
+    Converts the date from UTC to the local time.
+
+    Parameters
+    ----------
+    utc_date : Absolute Date
+        Date in UTC to be converted.
+    time_zone : int
+        Time zone of the local area.
+    summer_time : bool
+        True if it is summer time, False otherwise.
+
+    Returns
+    -------
+    Absolute Date
+        Converted date in local time.
+
+    """
     if summer_time:
         time_zone += 1
     return utc_date.shiftedBy(3600.0*time_zone)
 
 def local_time2utc(local_time, time_zone, summer_time):
+    """
+    Converts the date from the local time to UTC.
+
+    Parameters
+    ----------
+    local_date : Absolute Date
+        Date in local time to be converted.
+    time_zone : int
+        Time zone of the local area.
+    summer_time : bool
+        True if it is summer time, False otherwise.
+
+    Returns
+    -------
+    Absolute Date
+        Converted date in UTC.
+
+    """ 
     if summer_time:
         time_zone += 1
     return local_time.shiftedBy(-3600.0*time_zone)
